@@ -1,0 +1,185 @@
+---
+title: "Statistical inference with the GSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+library(gridExtra)
+library(onewaytests)
+```
+
+### Load data
+
+```{r load-data}
+load("gss.Rdata")
+```
+
+* * *
+
+## Part 1: Data
+In this project, the research is based on the data from the General Social Survey (GSS) which is a nationally representative survey that has been conducted by NORC to monitor societal change and study the growing complexity of American society since 1972. 
+
+As we can learn from [Research Highlights](https://www.norc.org/PDFs/GSS%20Reports/Research%20Highlights-GSS%20(ECON)%20FINAL%20slightly%20different%20layout-DTP%20Formatted.pdf), *"The GSS sample is drawn using an area probability design. Using NORC’s sample frame of United States addresses, a mix of urban, suburban, and rural National Frame Areas (NFAs) are scientifically selected to represent the nation".* This tells us that researchers perform an **observational study** when they collected data. If we see urban, suburban and NFAs as strata, then they actually adopted **stratified sampling** to be specific.
+
+As a result, the data is **generalizable**. Also, it's obvious that the random assignment was **not** used, so we can't get any causality result from this sample.
+
+* * *
+
+## Part 2: Research question
+
+**My research question:**
+Whether there are any differences between average "Highest year of school completed" from different "family income when 16 years old"?
+
+It is of interest because many factors can influence one's highest year of school completed and family income can be one of them. It is a simple logic that a person from wealthy family may be able to spend more time and energy on learning at shcool but it is not for sure.
+
+This question involves 2 variables: `incom16` and `educ`. We need to compare many means simultaneously, so **ANOVA** is what we need.
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+For my research question, we need to be familiar with the variables `incom16` and `educ`. First we check the codebook, then we explore the data by using the `dplyr` chain to select and `str()` to investigate the structure.
+
+```{r data}
+gss %>% 
+  select(incom16, educ) %>% 
+  str()
+```
+
+We can learn that `educ` is numerical data and `incom16` is categorical data recorded as factors with 6 levels. In addition, NA occurs so we need to handle it by `filter`ing them out.
+
+```{r data1}
+gssR1 <- gss %>% 
+  filter(incom16 != "Lived In Institution", !is.na(incom16), !is.na(educ)) %>%
+  select(incom16, educ)
+```
+
+For `educ` we can group the sample by `incom16` and take a look at numerical summaries such as means, medians, etc.
+
+```{r summary1}
+gssR1 %>% 
+  group_by(incom16) %>%
+  summarise(n = n(), mean = mean(educ), sd = sd(educ),
+            Q1 = quantile(educ,0.25),
+            median = median(educ),
+            Q3 = quantile(educ,0.75),
+            min = min(educ), max = max(educ))
+```
+
+From the summary table, we can find several facts as follows. First, each group has quite large sample size, which can result in some large sample results. Second, the means and median are reasonable, so there is no explicit error in the data set. Third, the means and standard deviations are different between groups, but not very big difference at the same time.
+
+For a better presentation, a side-by-side box plot is shown in the figure below.
+
+```{r boxplot}
+ggplot(data = gssR1,aes(x = incom16, y = educ)) + 
+  geom_boxplot(aes(fill = incom16))
+```
+
+The information is almost the same as what we have learned from the summary table. However, we can tell that there are some outliers in each group according to the plot.
+
+* * *
+
+## Part 4: Inference
+
+**1. State hypothesis**
+
+We need ANOVA to use a single hypothesis test to check whether the means across groups are equal:
+
+$H_0:$ The average education-year is identical in all income-level families. Any observed difference is due to chance. Notationally, we write $\mu_A = \mu_B = \mu_C$ (See Condition2 Below).
+
+$H_A:$ The average education-year varies by different income-level families. At least one mean is different.
+
+**2. Check conditions**
+
+There are three conditions we must check on the data before performing ANOVA:
+
+*Condition 1: Independence*
+
+As we can learn from Part 1, the data are a random sample, so this condition is satisfied without doubt. 
+
+
+*Condition 2: Constant Variance*
+
+As we have talked about from Part 2, the standard deviations are different between groups. We may need a formal test to determine whether it is heteroscedasticiy or not. The Bartlett test is chosen.
+
+```{r bartlett_test}
+bartlett.test(educ ~ incom16, data = gssR1)
+```
+
+From the result, we can see that p-value is extremely small, indicating that the heteroscedasticiy is quite strong.
+
+***To avoid the violation of the condition, I decide to delete the "Average" income and "Above Average" income groups. That's why my hypothesis only includes 3 means.***
+
+```{r data2}
+gssR2 <- gssR1 %>% 
+  filter(incom16 != "Average" , incom16 != "Above Average") 
+gssR2$incom16 <- factor(gssR2$incom16)
+```
+
+
+*Condition 3: Normality*
+
+We can check this condition from a histogram of the observations from each group.
+
+```{r histogram}
+hplot1 <- ggplot(data = gssR2[gssR2$incom16=="Far Below Average",], aes(x = educ)) +
+  geom_histogram(binwidth = 2) +
+  labs(title = "Far Below Average")
+
+hplot2 <- ggplot(data = gssR2[gssR2$incom16=="Below Average",], aes(x = educ)) +
+  geom_histogram(binwidth = 2) +
+  labs(title = "Below Average")
+
+hplot3 <- ggplot(data = gssR2[gssR2$incom16=="Far Above Average",], aes(x = educ)) +
+  geom_histogram(binwidth = 2) +
+  labs(title = "Far Above Average")
+
+grid.arrange(hplot1, hplot2, hplot3, nrow=1)
+```
+
+From the plot above, we can conclude that each distribution is basically unimodal and symmetric but not completely like normal distribution at the same time. Since the normality condition is not very important when the sample sizes for each group are large, we can assume that this condition is reasonably met.
+
+
+**3. State the method**
+
+As I have said before, the method is **ANOVA** when we need to check whether the means across groups are equal. As we can learn from the textbook, the method of ANOVA focuses on answering one question: is the variability in the sample means so large that it seems unlikely to be from chance alone? We can use the **F statistic**, the fraction of MSG and MSE, to evaluate the hypotheses. The larger F will be, the stronger the evidence is against the null hypothesis.
+
+What's more, if the Constant Variance condition is not met, we can adopt **Welch's ANOVA** instead.
+
+**4. Perform inference**
+
+First, we assume that all conditions are met, so ANOVA inference is shown below.
+
+```{r ANOVA}
+inference(y = educ, x = incom16, data = gssR2, type = "ht", 
+          statistic = "mean",  method = "theoretical", alternative = "greater")
+```
+
+Second, if we suspect that the Constant Variance condition is not met, the Welch's ANOVA inference shown below is more reliable.
+
+```{r Welch_ANOVA}
+welch.test(educ ~ incom16, data = gssR2)
+```
+
+No matter which method, the result is same: Reject $H_0$, Difference is statistically significant.
+
+**5. Interpret results**
+
+In this step, I will only interpret results from ANOVA. From step 4, we can learn some facts as follows.
+
+First, $df_1 = 2$, $df_2 = 15175$, $MSG = 3236.26$, $MSE = 12.09$, $F$ value is 267.6, p-value is below 0.0001, so we can reject $H_0$ and accept $H_A$. 
+
+Second, "Pairwise tests - t tests with pooled SD" is also shown above. We can find that the means education year between each two groups are significantly different.
+
+As a result, the conclusion is that there are significant differences between average "Highest year of school completed" from different "family income when 16 years old".

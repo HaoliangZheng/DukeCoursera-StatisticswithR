@@ -1,0 +1,173 @@
+---
+title: "Exploring the BRFSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(gridExtra)
+```
+
+### Load data
+
+```{r load-data}
+load("brfss2013.RData")
+```
+
+* * *
+
+## Part 1: Data
+In this project, the research is based on the data from The Behavioral Risk Factor Surveillance System (BRFSS) which is a collaborative project between all of the states in the United States (US) and participating US territories and the Centers for Disease Control and Prevention (CDC) since 1984. 
+
+As we can learn from the [OVERVIEW](https://www.cdc.gov/brfss/annual_data/2018/pdf/overview-2018-508.pdf), *"Fifty-one projects used a disproportionate stratified sample (DSS) design for their landline samples. Guam and Puerto Rico used a simple random-sample design. In the type of DSS design that states most commonly used in the BRFSS landline telephone sampling, the BRFSS divides telephone numbers into two groups, or strata, which are sampled separately".* This tells us that researchers perform an **observational study** when they collected data and they adopted **stratified sampling** to be specific.
+As a result, the data is **generalizable**. Also, it's obvious that the random assignment was **not** used, so we can't get any causality result from this sample.
+
+* * *
+
+## Part 2: Research questions
+
+**Research quesion 1:**
+Is there any association between weight and difficulty in walking or climbing stairs?
+
+It is of interest because many factors can result in difficulty in walking or climbing stairs and high weight can be one of them. It is a simple logic that high-weight person may spend more effort on walking or climbing but it is not for sure.
+
+This question involves 2 variables: `wtkg3` and `diffwalk`.
+
+
+**Research quesion 2:**
+Is there any difference (trend) in average sleep time between sex across months?
+
+There are many reasons we should be interested in this question. First, we can discover whether men and women have different sleep time. Second, we can find whether there is a trend on the change of average sleep time across months. Third, we can determine whether the trend of men's is the same as the one of women's.
+
+This question involves 4 variables: `imonth`, `iyear`, `sex` and `sleptim1`.
+
+
+**Research quesion 3:**
+Is there any difference (trend) in average "physical health not good"-days and "mental health not good"-days between sex across months?
+
+There are also many reasons we should be interested in this question. First, we can discover whether men and women have different "physical health not good"-days and "mental health not good"-days. Second, we can find whether there is a trend on the change of average physical or mental health not good days across months. Third, we can determine whether the trend of men's is the same as the one of women's. Last, we can  determine whether the trend of men's is the same as the one of women's
+
+This question involves 5 variables: `imonth`, `iyear`, `sex`, `menthlth` and `physhlth`.
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+
+**Research quesion 1:**
+
+As Research question 1, we need to be familiar with the variables `wtkg3` and `diffwalk`. First we check the codebook, then we explore the data by using the `dplyr` chain to select and `str()` to investigate the structure.
+
+```{r data1}
+brfss2013 %>% 
+  select(wtkg3, diffwalk) %>% 
+  str()
+```
+
+We can learn that `wtkg3` is numerical data and `diffwalk` is categorical data recorded as factors with 2 levels. In addition, NA occurs so we need to handle it by `filter`ing them out.
+
+```{r handle1}
+rq1 <- brfss2013 %>% 
+  filter(!is.na(wtkg3), diffwalk == "Yes"|diffwalk == "No") %>%
+  mutate(wtkg = wtkg3/100) %>%
+  select(diffwalk, wtkg)
+```
+
+For `wtkg3` we can group the sample by `diffwalk` and take a look at numerical summaries such as means, medians, etc.
+```{r summary1}
+rq1 %>% 
+  group_by(diffwalk) %>%
+  summarise(wtmean = mean(wtkg), wtmedian = median(wtkg), wtsd = sd(wtkg), 
+            wtmin = min(wtkg), wtmax = max(wtkg))
+```
+
+The mean and median are reasonable, however, the min values are too small to be true. There may be errors in the data that we should look for, but it won't affect much due to the small proportion. 
+
+The segmented boxplot is also shown below.
+```{r plot1}
+ggplot(data=rq1,aes(x=diffwalk,y=wtkg)) + 
+  geom_boxplot(aes(fill=diffwalk))
+```
+
+From summaries and the boxplot, we can learn that: first, Respondents whose `diffwalk` is "Yes" are on average weighter than "No" ones; second, the difference is not large enough that we can make a conclusion right now. Maybe we need hypothesis test to determine whether there is association between weight and difficulty in walking or climbing stairs.
+
+
+**Research quesion 2:**
+
+As Research question 2, we need to be familiar with the variables `imonth`, `iyear`, `sex` and `sleptim1`. First we check the codebook, then we explore the data by using the `dplyr` chain to select and `str()` to investigate the structure.
+
+```{r data2}
+brfss2013 %>% 
+  select(iyear, imonth, sex, sleptim1) %>% 
+  str()
+```
+
+We can learn that `sleptim1` is numerical data and others are categorical data recorded as factors. In addition, NA occurs so we need to handle it by `filter`ing them out.
+
+Then we need to calculate the average sleep time for each month and sex.
+```{r summary2}
+rq2 <- brfss2013 %>% 
+  filter(!is.na(sleptim1), !is.na(sex), iyear == 2013) %>%
+  group_by(imonth, sex) %>%
+  summarise(avgslep = sum(sleptim1)/n())
+rq2
+```
+
+The result is hard to analyze at first, so we need to make a plot to see the trend and compare.
+
+```{r plot2}
+ggplot(data = rq2, aes(x = imonth, y = avgslep, group = sex)) +
+  geom_point(aes(color=sex)) +
+  geom_line(aes(linetype=sex,color=sex)) +
+  theme(legend.position="top")
+```
+
+From the plot, we can learn lots of interesting facts as follow. First, the average sleep time of male is on average less than the one of female. Second, there is trend of sleep time across months: the average sleep time decreases from January to March, fluctuates from March to August and increases from September to December. Third, the trend of sleep time of male is the same as the one of female.
+
+
+**Research quesion 3:**
+
+As Research question 3, we need to be familiar with the variables `imonth`, `iyear`, `sex`, `menthlth` and `physhlth`. First we check the codebook, then we explore the data by using the `dplyr` chain to select and `str()` to investigate the structure.
+
+```{r data3}
+brfss2013 %>% 
+  select(iyear, imonth, sex, menthlth, physhlth) %>% 
+  str()
+```
+
+We can learn that `menthlth` and `physhlth`are numerical data and others are categorical data recorded as factors. In addition, NA occurs so we need to handle it by `filter`ing them out.
+
+```{r summary3}
+rq3 <- brfss2013 %>% 
+  filter(!is.na(menthlth), !is.na(physhlth), !is.na(sex), iyear == 2013) %>%
+  group_by(imonth, sex) %>%
+  summarise(avgmenth = sum(menthlth)/n(), avgphysh = sum(physhlth)/n())
+rq3
+```
+
+The result is hard to analyze at first, so we need to make a plot to see the trend and compare.
+
+```{r plot3}
+plot31 <- ggplot(data = rq3, aes(x = imonth, y = avgmenth, group = sex)) +
+  geom_point(aes(color=sex)) +
+  geom_line(aes(linetype=sex,color=sex)) +
+  theme(legend.position="top")
+
+plot32 <- ggplot(data = rq3, aes(x = imonth, y = avgphysh, group = sex)) +
+  geom_point(aes(color=sex)) +
+  geom_line(aes(linetype=sex,color=sex)) +
+  theme(legend.position="top")
+
+grid.arrange(plot31, plot32, nrow=2)
+```
+
+From the plot, we can also learn lots of interesting facts as follow. First, "physical health not good"-days and "mental health not good"-days of male are both on average less than the ones of female. Second, there seems to be no trend of mental health not good days across months: the values just fluctuate. Third, there seems to be trend of physical health not good days across months: the values slightly decrease from January to August. Fourth, the patterns shown in the plot of male is the same as the ones of female.
